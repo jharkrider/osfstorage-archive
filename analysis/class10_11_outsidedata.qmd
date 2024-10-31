@@ -1,0 +1,147 @@
+---
+title: "practice outside data"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+here::i_am("analysis/class10_11_outsidedata.qmd")
+library(here) 
+library(tidyverse)
+```
+
+```{r}
+df <- read.csv(here("data", "delong maze 40Ss.csv"), # we give directions about how to find the file with the data. x
+              header = 1, 
+              sep = ",", 
+              comment.char = "#", 
+              strip.white = T,
+              col.names = c("Index","Time","Counter","Hash","Owner","Controller","Item","Element","Type","Group","FieldName","Value","WordNum","Word","Alt","WordOn","CorrWord","RT","Sent","TotalTime","Question","Resp","Acc","RespRT"))
+```
+
+3. Create a new dataframe with only the rows that have teh value “Maze” for the Controller variable, and don’t have the word “practice” in Type.
+
+```{r}
+df_maze <- df |> 
+  filter(Controller == "Maze", !Type == "practice")
+```
+
+```{r}
+df_maze |> 
+  separate_wider_delim(cols = Type, delim = ".",
+                       names_sep = " ")
+
+# naming explicitly
+
+df_maze <- df_maze |> 
+  separate_wider_delim(cols = Type, delim = ".", 
+                       names = c("exp", "item_num", "expect", "position_name", "position", "cloze_name", "art.cloze", "n.cloze"))
+```
+
+Removing some extra/confusing columns: 
+
+```{r}
+df_maze <- df_maze |> 
+  select(Index, exp, item_num, expect, position, art.cloze, n.cloze, WordNum, Word, Alt, WordOn, CorrWord, RT, Sent)
+df_maze
+```
+
+let's find demographic data 
+
+```{r}
+demo <- df |> 
+  filter(Controller == "Form") |> 
+  select(Index:Value) 
+
+```
+
+Pivot the demographic data wider so that the FieldName becomes the names of new columns and Value has the observations. Do you get the right number of rows? There are 39 participants in the experiment.
+
+```{r}
+demo <- demo |> 
+  pivot_wider(
+    id_cols = Index, 
+    names_from = FieldName, 
+    values_from = Value
+  )
+
+# another way to do this: 
+  
+#demo <- demo |> 
+ # select(-Item) |> 
+  #pivot_wider(names_from = FieldName, 
+   #           values_from = Value)
+```
+
+Join the demographic data with the maze data so that each row has a variable for the participant’s age.
+
+```{r}
+df_maze <-
+  left_join(df_maze, select(demo, Index, age), join_by(Index))
+```
+
+If we only wanted participants over 30 
+
+```{r}
+demo_female <- demo |> 
+  filter(gender == "female")
+```
+
+Doing this with filtering joins
+
+```{r}
+df_nonfemaledata <- anti_join(df_maze, demo_female, join_by(Index))
+df_femaledata <- semi_join(df_maze, demo_female, join_by(Index))
+```
+
+Change age to be numeric.
+
+```{r}
+df_maze <- df_maze |> 
+  mutate(as.numeric(age))
+```
+
+Filter to rows where WordNum is the same as position - these are the rows with data for the “critical” position in the experiment, where the expected or unexpected noun would be.
+
+```{r}
+df_maze_critical <- df_maze |> 
+  filter(position == WordNum)
+```
+
+Summarize the reaction times with a mean, grouped by expectation. Which took longer?
+
+```{r}
+df_maze_critical |> 
+  group_by(expect) |> 
+  summarize(av_rt = mean(RT, na.rm = TRUE))
+```
+
+Unexpected words took quite a lot longer. 
+
+11. Did all participants take longer for unexpected nouns?
+
+```{r}
+df_maze_critical |> 
+  group_by(Index, expect) |> 
+  summarize(av_rt = mean(RT, na.rm = TRUE)) |> 
+  pivot_wider(
+    id_cols = Index, # not necessary, but you can put it in. 
+    names_from = expect,
+    values_from = av_rt # now we can use mutate to create a new column since we have the wider format. 
+  ) |> 
+  mutate(unexpected_cost = unexpected - expected) |> 
+  arrange(unexpected_cost)
+```
+
+12. Did older participants have longer reaction times?
+
+```{r}
+df_maze |> 
+  group_by(Index, age) |> 
+  summarize(meanRT = mean(RT, na.rm = TRUE)) |>
+  arrange(meanRT)
+```
+
+
+
